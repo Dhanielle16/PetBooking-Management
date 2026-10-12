@@ -14,10 +14,10 @@ public class Main {
         System.out.println("==========================================");
         System.out.println("  PawSync: Pet Care Booking & Management");
         System.out.println("==========================================");
-        System.out.print("\n1. Login");
-        System.out.print("\n2. Register");
-        System.out.print("\n3. Exit");
-        System.out.print("\nChose an option: ");
+        System.out.print("1. Login\n");
+        System.out.print("2. Register\n");
+        System.out.print("3. Exit\n");
+        System.out.print("Chose an option: ");
         String choice = sc.nextLine();
 
         switch(choice){
@@ -26,7 +26,7 @@ public class Main {
             case "2":
                 System.out.print("\nEnter username: ");
                 String user = sc.nextLine();
-                System.out.print("\nEnter password: ");
+                System.out.print("Enter password: ");
                 String pass = sc.nextLine();
 
                 System.out.print("Select Role [1] PET OWNER | [2] RECEPTIONIST | [3] VETERINARIAN: ");
