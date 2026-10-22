@@ -1,8 +1,9 @@
 package com.scc.dao;
 
 import com.scc.model.User;
-
 import java.sql.*;
+import java.util.ArrayList;
+import java.util.List;
 
 public class UserDao {
 
@@ -79,16 +80,40 @@ public class UserDao {
                  } else {
                      System.out.println("Account not Found");
                  }
-
              }
              }catch (SQLException e) {
                  System.err.println("Error during login: " + e.getMessage());
              } return null;
+    }
 
+    public List<User> getAllUser(){
+        List<User> userList = new ArrayList<>();
+        String sql = "SELECT id, username, password, role, status FROM users";
+
+        try (Connection conn = DatabaseConnection.getConnection();
+            Statement stmt = conn.createStatement();
+            ResultSet rs = stmt.executeQuery(sql)){
+
+            while (rs.next()){
+                userList.add(new User(
+                        rs.getInt("id"),
+                        rs.getString("username"),
+                        rs.getString("password"),
+                        rs.getString("role"),
+                        rs.getString("status")
+                ));
+            }
+        } catch (SQLException e){
+            System.out.println("Error fetching all users: " + e.getMessage());
+        }
+        return userList;
 
 
 
 
     }
+
+
+
 
 }
