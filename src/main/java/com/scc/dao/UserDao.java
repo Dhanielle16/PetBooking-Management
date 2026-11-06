@@ -6,6 +6,7 @@ import com.scc.model.User;
 import java.sql.*;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 
 public class UserDao {
 
@@ -178,15 +179,44 @@ public List<User> getPendingUser(){
                 System.out.println("Error approving users: "+e.getMessage());
             }
             return false;
+    }
+
+
+    public boolean updateUserAndStatus(int userId, String newrole, String newStatus){
+
+        String sql = "UPDATE users SET role = ?, status = ? WHERE id = ?";
+
+        try(
+            Connection conn = DatabaseConnection.getConnection();
+            PreparedStatement pstmt = conn.prepareStatement(sql)){
+
+            pstmt.setString(1, newrole.toUpperCase());
+            pstmt.setString(2, newStatus.toUpperCase());
+            pstmt.setInt(3, userId);
+
+            int rowsUpdated = pstmt.executeUpdate();
+            if(rowsUpdated > 0){
+                System.out.println("-> User Id: "+userId+ "updated successfully!");
+                return true;
+            }else{
+                System.out.println("-> User ID not found.");
+            }
+            return false;
+
+
+        } catch (SQLException e) {
+            System.err.println("Error updating user: "+e.getMessage());
         }
+        return false;
+
+
+
+    }
 
 
 
 
-
-
-
-}
+    }
 
 
 
