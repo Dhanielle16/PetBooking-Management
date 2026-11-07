@@ -1,15 +1,17 @@
 package com.scc.ui;
 
+import com.scc.dao.ActivityLogDao;
 import com.scc.dao.UserDao;
+import com.scc.model.ActivityLog;
 import com.scc.model.User;
 
 import java.util.List;
-import java.util.Locale;
 import java.util.Scanner;
 
 public class AdminMenu {
 
     private final UserDao userDao;
+    private final ActivityLogDao activityLogDao = new ActivityLogDao();
     private final Scanner sc;
 
     public AdminMenu(UserDao userDao, Scanner sc) {
@@ -37,11 +39,11 @@ public class AdminMenu {
             String choice = sc.nextLine().trim();
 
             switch (choice) {
-                case "1" -> manageUserAccounts(admin); // Pass admin here
+                case "1" -> manageUserAccounts(admin);
                 case "2" -> System.out.println("Service Management is not implemented yet.");
                 case "3" -> System.out.println("Service Price and Availability is not implemented yet.");
                 case "4" -> System.out.println("Reports are not implemented yet.");
-                case "5" -> System.out.println("Activity Logs are not implemented yet.");
+                case "5" -> viewSystemAuditLogs();
                 case "6" -> System.out.println("Staff Schedule Management is not implemented yet.");
                 case "7" -> System.out.println("Appointment Management is not implemented yet.");
                 case "8" -> {
@@ -53,22 +55,65 @@ public class AdminMenu {
         }
     }
 
-    // Accept admin as a parameter here
+    private void viewSystemAuditLogs() {
+        boolean viewingLogs = true;
+        while (viewingLogs) {
+            System.out.println("\n==========================================");
+            System.out.println("         SYSTEM AUDIT LOG MENU            ");
+            System.out.println("==========================================");
+            System.out.println("1. View All System Logs");
+            System.out.println("2. Filter Logs by User ID");
+            System.out.println("3. Return to Admin Dashboard");
+            System.out.print("Choose an option (1-3): ");
+
+            String choice = sc.nextLine().trim();
+
+            switch (choice) {
+                case "1" -> printAuditTable(activityLogDao.getAllLogs());
+                case "2" -> {
+                    int userId = readIntInput("Enter User ID to filter: ");
+                    printAuditTable(activityLogDao.getLogsByUserId(userId));
+                }
+                case "3" -> viewingLogs = false;
+                default -> System.out.println("-> [ERROR] Invalid Option");
+            }
+        }
+    }
+
+    private void printAuditTable(List<ActivityLog> logs) {
+        if (logs.isEmpty()) {
+            System.out.println("\n-> No activity logs found.");
+            return;
+        }
+
+        System.out.println("\n==========================================================================================================================");
+        System.out.printf("%-6s | %-8s | %-20s | %-52s | %-22s%n", "ID", "User ID", "Action Type", "Description", "Timestamp");
+        System.out.println("==========================================================================================================================");
+
+        for (ActivityLog log : logs) {
+            System.out.printf("%-6d | %-8d | %-20s | %-52s | %-22s%n",
+                    log.getId(),
+                    log.getUserId(),
+                    log.getActionType(),
+                    log.getDescription(),
+                    log.getTimestamp().toString());
+        }
+        System.out.println("==========================================================================================================================\n");
+    }
+
     private void manageUserAccounts(User admin) {
         boolean managingUsers = true;
 
         while (managingUsers) {
             System.out.println("\n==========================================");
-            System.out.println("           USER ACCOUNT MANAGEMENT");
+            System.out.println("            USER ACCOUNT MANAGEMENT");
             System.out.println("==========================================");
             System.out.println("1. View All Users");
             System.out.println("2. View Pending User Approvals");
             System.out.println("3. Approve User Registration");
-            System.out.println("4. Add New User");
-            System.out.println("5. Update User Role / Status");
-            System.out.println("6. Delete User Account");
-            System.out.println("7. Return to Admin Dashboard");
-            System.out.print("Choose an option (1-7): ");
+            System.out.println("4. Update User Role / Status");
+            System.out.println("5. Return to Admin Dashboard");
+            System.out.print("Choose an option (1-5): ");
 
             String choice = sc.nextLine().trim();
 
@@ -76,8 +121,8 @@ public class AdminMenu {
                 case "1" -> viewAllUser();
                 case "2" -> viewPendingUsers();
                 case "3" -> approveUser();
-                case "5" -> updateUser(admin);
-                case "7" -> managingUsers = false;
+                case "4" -> updateUser(admin);
+                case "5" -> managingUsers = false;
                 default -> System.out.println("-> [ERROR] Invalid Option");
             }
         }
@@ -91,17 +136,17 @@ public class AdminMenu {
             return;
         }
 
-        System.out.println("+------+-----------------+----------------+------------+");
-        System.out.printf("| %-4s | %-15s | %-14s | %-10s |%n",
-                "ID", "Username", "Role", "Status");
-        System.out.println("+------+-----------------+----------------+------------+");
+        System.out.println("+------+----------------------+---------------------------+--------------+------------+");
+        System.out.printf("| %-4s | %-20s | %-25s | %-12s | %-10s |%n",
+                "ID", "Full Name", "Email", "Role", "Status");
+        System.out.println("+------+----------------------+---------------------------+--------------+------------+");
 
         for (User u : users) {
-            System.out.printf("| %-4d | %-15s | %-14s | %-10s |%n",
-                    u.id(), u.username(), u.role(), u.status());
+            System.out.printf("| %-4d | %-20s | %-25s | %-12s | %-10s |%n",
+                    u.id(), u.fullName(), u.email(), u.role(), u.status());
         }
 
-        System.out.println("+------+-----------------+----------------+------------+");
+        System.out.println("+------+----------------------+---------------------------+--------------+------------+");
     }
 
     private void viewAllUser() {
@@ -120,8 +165,7 @@ public class AdminMenu {
             return;
         }
 
-        System.out.print("Enter User ID to Approve (or 0 to cancel): ");
-        int userId = Integer.parseInt(sc.nextLine().trim());
+        int userId = readIntInput("Enter User ID to Approve (or 0 to cancel): ");
 
         if (userId == 0){
             System.out.println("-> Operation Cancelled by the user.");
@@ -163,7 +207,7 @@ public class AdminMenu {
         }
 
         String newStatus = readValidStatus();
-        if(newStatus == null){
+        if(newStatus.equals("0") || newStatus.equals("CANCEL")){
             System.out.println("-> Operation Cancelled.");
             return;
         }
@@ -198,13 +242,12 @@ public class AdminMenu {
             }
             System.out.println(" -> [ERROR] Invalid status. Must be APPROVED or PENDING.");
         }
-
     }
 
     private int readIntInput(String prompt){
         while(true){
-            System.out.println(prompt);
-            String input =  sc.nextLine().trim();
+            System.out.print(prompt);
+            String input = sc.nextLine().trim();
             try{
                 return Integer.parseInt(input);
             } catch (NumberFormatException e){
@@ -212,8 +255,4 @@ public class AdminMenu {
             }
         }
     }
-
-
 }
-
-
