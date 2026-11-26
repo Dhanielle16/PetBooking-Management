@@ -1,6 +1,12 @@
 
 package com.scc.ui;
 
+import com.scc.dao.ServiceDao;
+import com.scc.model.Service;
+
+import java.io.FileWriter;
+import java.io.IOException;
+
 import com.scc.dao.ActivityLogDao;
 import com.scc.dao.DatabaseConnection;
 import com.scc.dao.UserDao;
@@ -24,6 +30,7 @@ public class AdminMenu {
     private final UserDao userDao;
     private final ActivityLogDao activityLogDao = new ActivityLogDao();
     private final Scanner sc;
+    private final ServiceDao serviceDao = new ServiceDao();
 
     public AdminMenu(UserDao userDao, Scanner sc) {
         this.userDao = userDao;
@@ -59,21 +66,21 @@ public class AdminMenu {
 
                 case "1" -> manageUserAccounts(admin);
 
-                case "2" ->
-                        System.out.println("Service Management is not implemented yet.");
+                case "2" -> manageServices();
 
-                case "3" ->
-                        System.out.println("Service Price and Availability is not implemented yet.");
 
-                case "4" ->
-                        System.out.println("Reports are not implemented yet.");
+                case "3" -> manageServicePricesAndAvailability();
+
+
+                case "4" -> viewRevenueAndServiceReports(admin);
+
 
                 case "5" -> viewSystemAuditLogs();
 
                 case "6" -> manageStaffSchedules();
 
-                case "7" ->
-                        System.out.println("Appointment Management is not implemented yet.");
+                case "7" -> viewAppointments(admin);
+
 
                 case "8" -> {
                     System.out.println("Logging out from Admin Dashboard...");
@@ -892,6 +899,734 @@ public class AdminMenu {
             }
         }
     }
+
+
+    // ==========================================
+    // 2. SERVICE MANAGEMENT
+    // ==========================================
+
+    private void manageServices() {
+        boolean managing = true;
+
+        while (managing) {
+            System.out.println("\n========== SERVICE MANAGEMENT ==========");
+            System.out.println("1. Add New Service");
+            System.out.println("2. View All Services");
+            System.out.println("3. Update Service Information");
+            System.out.println("4. Deactivate Service");
+            System.out.println("5. Return to Admin Dashboard");
+            System.out.print("Choose an option: ");
+
+            String choice = sc.nextLine().trim();
+
+            switch (choice) {
+                case "1" -> addService();
+                case "2" -> displayServices();
+                case "3" -> updateServiceInformation();
+                case "4" -> deactivateService();
+                case "5" -> managing = false;
+                default -> System.out.println("Invalid option.");
+            }
+        }
+    }
+
+    private void displayServices() {
+        List<Service> services = serviceDao.getAllServices();
+
+        System.out.println("\n================ ALL SERVICES ================");
+
+        if (services.isEmpty()) {
+            System.out.println("No services found.");
+            return;
+        }
+
+        String sql = """
+                SELECT service_id, service_name, category,
+                       duration_minutes, price, availability
+                FROM services
+                ORDER BY service_id
+                """;
+
+        try (Connection conn = DatabaseConnection.getConnection();
+             PreparedStatement pstmt = conn.prepareStatement(sql);
+             ResultSet rs = pstmt.executeQuery()) {
+
+            System.out.printf("%-5s %-22s %-15s %-10s %-12s %-15s%n",
+                    "ID", "Service", "Category", "Minutes", "Price", "Availability");
+
+            System.out.println(
+                    "--------------------------------------------------------------------------");
+
+            while (rs.next()) {
+                System.out.printf("%-5d %-22s %-15s %-10d ₱%-11.2f %-15s%n",
+                        rs.getInt("service_id"),
+                        rs.getString("service_name"),
+                        rs.getString("category"),
+                        rs.getInt("duration_minutes"),
+                        rs.getDouble("price"),
+                        rs.getString("availability"));
+            }
+
+        } catch (SQLException e) {
+            System.out.println("Error displaying services: " + e.getMessage());
+        }
+    }
+
+    private void addService() {
+        System.out.println("\n========== ADD NEW SERVICE ==========");
+
+        System.out.print("Service Name: ");
+        String name = sc.nextLine().trim();
+
+        if (name.isEmpty()) {
+            System.out.println("Service name cannot be empty.");
+            return;
+        }
+
+        System.out.print("Description: ");
+        String description = sc.nextLine().trim();
+
+        System.out.print("Category: ");
+        String category = sc.nextLine().trim();
+
+        if (category.isEmpty()) {
+            System.out.println("Category cannot be empty.");
+            return;
+        }
+
+        double price = readDoubleInput("Price: ");
+
+        if (price < 0) {
+            System.out.println("Price cannot be negative.");
+            return;
+        }
+
+        int duration = readIntInput("Duration in minutes: ");
+
+        if (duration <= 0) {
+            System.out.println("Duration must be greater than zero.");
+            return;
+        }
+
+        boolean success = serviceDao.addService(
+                name, description, price, category, duration
+        );
+
+        if (success) {
+            System.out.println("Service added successfully.");
+        } else {
+            System.out.println("Unable to add service.");
+        }
+    }
+
+    private void updateServiceInformation() {
+        displayServices();
+
+        int serviceId = readIntInput(
+                "\nEnter Service ID to update (0 to cancel): ");
+
+        if (serviceId == 0) {
+            return;
+        }
+
+        Service service = serviceDao.getServiceById(serviceId);
+
+        if (service == null) {
+            System.out.println("Service not found or unavailable.");
+            return;
+        }
+
+        System.out.println("Enter the new service information.");
+
+        System.out.print("New Service Name: ");
+        String name = sc.nextLine().trim();
+
+        System.out.print("New Description: ");
+        String description = sc.nextLine().trim();
+
+        System.out.print("New Category: ");
+        String category = sc.nextLine().trim();
+
+        int duration = readIntInput("New Duration in minutes: ");
+
+        if (name.isEmpty() || category.isEmpty() || duration <= 0) {
+            System.out.println("Invalid service information.");
+            return;
+        }
+
+        boolean success = serviceDao.updateService(
+                serviceId, name, description, category, duration
+        );
+
+        if (success) {
+            System.out.println("Service information updated.");
+        } else {
+            System.out.println("Unable to update service.");
+        }
+    }
+
+    private void deactivateService() {
+        displayServices();
+
+        int serviceId = readIntInput(
+                "\nEnter Service ID to deactivate (0 to cancel): ");
+
+        if (serviceId == 0) {
+            return;
+        }
+
+        Service service = serviceDao.getServiceById(serviceId);
+
+        if (service == null) {
+            System.out.println("Service not found or already unavailable.");
+            return;
+        }
+
+        System.out.print("Deactivate this service? (Y/N): ");
+        String answer = sc.nextLine().trim();
+
+        if (!answer.equalsIgnoreCase("Y")) {
+            System.out.println("Operation cancelled.");
+            return;
+        }
+
+        if (serviceDao.deactivateService(serviceId)) {
+            System.out.println("Service deactivated successfully.");
+        } else {
+            System.out.println("Unable to deactivate service.");
+        }
+    }
+
+
+    // ==========================================
+    // 3. SERVICE PRICE AND AVAILABILITY
+    // ==========================================
+
+    private void manageServicePricesAndAvailability() {
+        boolean managing = true;
+
+        while (managing) {
+            System.out.println("\n===== SERVICE PRICE AND AVAILABILITY =====");
+            System.out.println("1. View Services");
+            System.out.println("2. Update Service Price");
+            System.out.println("3. Change Service Availability");
+            System.out.println("4. Return to Admin Dashboard");
+            System.out.print("Choose an option: ");
+
+            String choice = sc.nextLine().trim();
+
+            switch (choice) {
+                case "1" -> displayServices();
+                case "2" -> updateServicePrice();
+                case "3" -> changeServiceAvailability();
+                case "4" -> managing = false;
+                default -> System.out.println("Invalid option.");
+            }
+        }
+    }
+
+    private void updateServicePrice() {
+        displayServices();
+
+        int serviceId = readIntInput(
+                "\nEnter Service ID (0 to cancel): ");
+
+        if (serviceId == 0) {
+            return;
+        }
+
+        Service service = serviceDao.getServiceById(serviceId);
+
+        if (service == null) {
+            System.out.println("Service not found or unavailable.");
+            return;
+        }
+
+        double newPrice = readDoubleInput("Enter new price: ");
+
+        if (newPrice < 0) {
+            System.out.println("Price cannot be negative.");
+            return;
+        }
+
+        if (serviceDao.updateServicePrice(serviceId, newPrice)) {
+            System.out.println("Service price updated successfully.");
+        } else {
+            System.out.println("Unable to update service price.");
+        }
+    }
+
+    private void changeServiceAvailability() {
+        displayServices();
+
+        int serviceId = readIntInput(
+                "\nEnter Service ID (0 to cancel): ");
+
+        if (serviceId == 0) {
+            return;
+        }
+
+        System.out.println("1. Available");
+        System.out.println("2. Unavailable");
+        System.out.print("Select new availability: ");
+
+        String choice = sc.nextLine().trim();
+
+        boolean available;
+
+        if (choice.equals("1")) {
+            available = true;
+        } else if (choice.equals("2")) {
+            available = false;
+        } else {
+            System.out.println("Invalid availability option.");
+            return;
+        }
+
+        if (serviceDao.updateAvailability(serviceId, available)) {
+            System.out.println("Service availability updated successfully.");
+        } else {
+            System.out.println("Service ID not found or update failed.");
+        }
+    }
+
+
+    // ==========================================
+    // 4. REVENUE AND SERVICE UTILIZATION REPORT
+    // ==========================================
+
+    private void viewRevenueAndServiceReports(User admin) {
+        System.out.println("\n===== MONTHLY REVENUE AND SERVICE REPORT =====");
+
+        System.out.print("Enter month (YYYY-MM): ");
+        String month = sc.nextLine().trim();
+
+        if (!month.matches("\\d{4}-(0[1-9]|1[0-2])")) {
+            System.out.println("Invalid month. Use YYYY-MM, for example 2026-11.");
+            return;
+        }
+
+        String revenueSQL = """
+                SELECT COUNT(*) AS payment_count,
+                       COALESCE(SUM(amount), 0) AS total_revenue
+                FROM invoices
+                WHERE status = 'PAID'
+                  AND strftime('%Y-%m', created_at) = ?
+                """;
+
+        String utilizationSQL = """
+                SELECT aps.service_name_at_booking AS service_name,
+                       COUNT(DISTINCT aps.appointment_id) AS booking_count
+                FROM appointment_services aps
+                JOIN appointments a
+                  ON a.appointment_id = aps.appointment_id
+                WHERE strftime('%Y-%m', a.appointment_date) = ?
+                  AND UPPER(a.status) NOT IN ('CANCELLED', 'REJECTED')
+                GROUP BY aps.service_name_at_booking
+                ORDER BY booking_count DESC, service_name
+                """;
+
+        double totalRevenue = 0;
+        int paymentCount = 0;
+
+        try (Connection conn = DatabaseConnection.getConnection()) {
+
+            try (PreparedStatement pstmt =
+                         conn.prepareStatement(revenueSQL)) {
+
+                pstmt.setString(1, month);
+
+                try (ResultSet rs = pstmt.executeQuery()) {
+                    if (rs.next()) {
+                        paymentCount = rs.getInt("payment_count");
+                        totalRevenue = rs.getDouble("total_revenue");
+                    }
+                }
+            }
+
+            System.out.println("\nREPORT MONTH: " + month);
+            System.out.println("----------------------------------------");
+            System.out.println("Number of Paid Invoices: " + paymentCount);
+            System.out.printf("Total Revenue: ₱%.2f%n", totalRevenue);
+
+            System.out.println("\nSERVICE UTILIZATION");
+            System.out.println("----------------------------------------");
+            System.out.printf("%-30s %-15s%n",
+                    "Service Name", "Bookings");
+
+            try (PreparedStatement pstmt =
+                         conn.prepareStatement(utilizationSQL)) {
+
+                pstmt.setString(1, month);
+
+                try (ResultSet rs = pstmt.executeQuery()) {
+                    boolean found = false;
+
+                    while (rs.next()) {
+                        found = true;
+
+                        System.out.printf("%-30s %-15d%n",
+                                rs.getString("service_name"),
+                                rs.getInt("booking_count"));
+                    }
+
+                    if (!found) {
+                        System.out.println("No service bookings found for this month.");
+                    }
+                }
+            }
+
+        } catch (SQLException e) {
+            System.out.println("Report error: " + e.getMessage());
+            return;
+        }
+
+        System.out.print("\nExport this report to CSV? (Y/N): ");
+        String export = sc.nextLine().trim();
+
+        if (export.equalsIgnoreCase("Y")) {
+            exportMonthlyReport(month, admin.id());
+        }
+    }
+
+    private void exportMonthlyReport(String month, int adminId) {
+        String fileName = "PawSync_Report_" + month + ".csv";
+
+        String revenueSQL = """
+                SELECT COUNT(*) AS payment_count,
+                       COALESCE(SUM(amount), 0) AS total_revenue
+                FROM invoices
+                WHERE status = 'PAID'
+                  AND strftime('%Y-%m', created_at) = ?
+                """;
+
+        String utilizationSQL = """
+                SELECT aps.service_name_at_booking AS service_name,
+                       COUNT(DISTINCT aps.appointment_id) AS booking_count
+                FROM appointment_services aps
+                JOIN appointments a
+                  ON a.appointment_id = aps.appointment_id
+                WHERE strftime('%Y-%m', a.appointment_date) = ?
+                  AND UPPER(a.status) NOT IN ('CANCELLED', 'REJECTED')
+                GROUP BY aps.service_name_at_booking
+                ORDER BY booking_count DESC, service_name
+                """;
+
+        try (Connection conn = DatabaseConnection.getConnection();
+             FileWriter writer = new FileWriter(fileName)) {
+
+            writer.write("PAWSYNC MONTHLY REPORT\n");
+            writer.write("Month," + month + "\n\n");
+
+            writer.write("REVENUE SUMMARY\n");
+            writer.write("Number of Paid Invoices,Total Revenue\n");
+
+            try (PreparedStatement pstmt =
+                         conn.prepareStatement(revenueSQL)) {
+
+                pstmt.setString(1, month);
+
+                try (ResultSet rs = pstmt.executeQuery()) {
+                    if (rs.next()) {
+                        writer.write(
+                                rs.getInt("payment_count") + ","
+                                        + rs.getDouble("total_revenue") + "\n"
+                        );
+                    }
+                }
+            }
+
+            writer.write("\nSERVICE UTILIZATION\n");
+            writer.write("Service Name,Number of Bookings\n");
+
+            try (PreparedStatement pstmt =
+                         conn.prepareStatement(utilizationSQL)) {
+
+                pstmt.setString(1, month);
+
+                try (ResultSet rs = pstmt.executeQuery()) {
+                    while (rs.next()) {
+                        writer.write(
+                                csvValue(rs.getString("service_name")) + ","
+                                        + rs.getInt("booking_count") + "\n"
+                        );
+                    }
+                }
+            }
+
+            System.out.println("Report exported successfully: " + fileName);
+
+            activityLogDao.logAction(
+                    adminId,
+                    "REPORT_EXPORTED",
+                    "Monthly report exported for " + month
+            );
+
+        } catch (SQLException | IOException e) {
+            System.out.println("Unable to export report: " + e.getMessage());
+        }
+    }
+
+    private String csvValue(String value) {
+        if (value == null) {
+            return "";
+        }
+
+        return "\"" + value.replace("\"", "\"\"") + "\"";
+    }
+
+
+    // ==========================================
+    // 7. APPOINTMENT MANAGEMENT
+    // ==========================================
+
+    private void viewAppointments(User admin) {
+        boolean viewing = true;
+
+        while (viewing) {
+            System.out.println("\n========== APPOINTMENT MANAGEMENT ==========");
+            System.out.println("1. View All Appointments");
+            System.out.println("2. Search Appointment by ID");
+            System.out.println("3. Update Appointment Status");
+            System.out.println("4. Return to Admin Dashboard");
+            System.out.print("Choose an option: ");
+
+            String choice = sc.nextLine().trim();
+
+            switch (choice) {
+                case "1" -> displayAppointments(0);
+                case "2" -> {
+                    int appointmentId = readIntInput("Enter Appointment ID: ");
+                    displayAppointments(appointmentId);
+                }
+                case "3" -> updateAppointmentStatus(admin);
+                case "4" -> viewing = false;
+                default -> System.out.println("Invalid option.");
+            }
+        }
+    }
+
+    private void displayAppointments(int appointmentId) {
+        String sql = """
+                SELECT
+                    a.id,
+                    a.appointment_date,
+                    a.start_time,
+                    a.end_time,
+                    a.service_type,
+                    a.status,
+                    a.total_amount,
+                    owner.full_name AS owner_name,
+                    p.pet_name,
+                    vet.full_name AS veterinarian_name
+                FROM appointments a
+                JOIN users owner
+                    ON a.user_id = owner.user_id
+                JOIN pets p
+                    ON a.pet_id = p.pet_id
+                LEFT JOIN users vet
+                    ON a.staff_id = vet.user_id
+                WHERE (? = 0 OR a.id = ?)
+                ORDER BY a.appointment_date DESC, a.start_time DESC
+                """;
+
+        try (Connection conn = DatabaseConnection.getConnection();
+             PreparedStatement pstmt = conn.prepareStatement(sql)) {
+
+            pstmt.setInt(1, appointmentId);
+            pstmt.setInt(2, appointmentId);
+
+            try (ResultSet rs = pstmt.executeQuery()) {
+                boolean found = false;
+
+                System.out.println("\n================ APPOINTMENTS ================");
+
+                System.out.printf(
+                        "%-5s %-12s %-10s %-18s %-15s %-18s %-12s%n",
+                        "ID", "Date", "Time", "Pet", "Owner",
+                        "Veterinarian", "Status"
+                );
+
+                System.out.println(
+                        "--------------------------------------------------------------------------------");
+
+                while (rs.next()) {
+                    found = true;
+
+                    String time = rs.getString("start_time") == null
+                            ? "N/A" : rs.getString("start_time");
+
+                    String veterinarian =
+                            rs.getString("veterinarian_name") == null
+                                    ? "Unassigned"
+                                    : rs.getString("veterinarian_name");
+
+                    System.out.printf(
+                            "%-5d %-12s %-10s %-18s %-15s %-18s %-12s%n",
+                            rs.getInt("id"),
+                            rs.getString("appointment_date"),
+                            time,
+                            rs.getString("pet_name"),
+                            rs.getString("owner_name"),
+                            veterinarian,
+                            rs.getString("status")
+                    );
+
+                    System.out.println("Services: " + rs.getString("service_type"));
+                    System.out.printf("Total Amount: ₱%.2f%n",
+                            rs.getDouble("total_amount"));
+                    System.out.println();
+                }
+
+                if (!found) {
+                    System.out.println("No appointments found.");
+                }
+            }
+
+        } catch (SQLException e) {
+            System.out.println("Error retrieving appointments: " + e.getMessage());
+        }
+    }
+
+    private void updateAppointmentStatus(User admin) {
+        displayAppointments(0);
+
+        int appointmentId = readIntInput(
+                "\nEnter Appointment ID to update (0 to cancel): ");
+
+        if (appointmentId == 0) {
+            return;
+        }
+
+        String currentStatus = null;
+
+        String checkSQL = """
+                SELECT status
+                FROM appointments
+                WHERE id = ?
+                """;
+
+        try (Connection conn = DatabaseConnection.getConnection();
+             PreparedStatement pstmt = conn.prepareStatement(checkSQL)) {
+
+            pstmt.setInt(1, appointmentId);
+
+            try (ResultSet rs = pstmt.executeQuery()) {
+                if (rs.next()) {
+                    currentStatus = rs.getString("status");
+                }
+            }
+
+        } catch (SQLException e) {
+            System.out.println("Error checking appointment: " + e.getMessage());
+            return;
+        }
+
+        if (currentStatus == null) {
+            System.out.println("Appointment not found.");
+            return;
+        }
+
+        System.out.println("\nCurrent Status: " + currentStatus);
+        System.out.println("1. PENDING");
+        System.out.println("2. CONFIRMED");
+        System.out.println("3. CANCELLED");
+        System.out.println("4. COMPLETED");
+        System.out.println("5. Return");
+        System.out.print("Choose the new status: ");
+
+        String choice = sc.nextLine().trim();
+
+        String newStatus = switch (choice) {
+            case "1" -> "PENDING";
+            case "2" -> "CONFIRMED";
+            case "3" -> "CANCELLED";
+            case "4" -> "COMPLETED";
+            default -> null;
+        };
+
+        if (choice.equals("5")) {
+            System.out.println("Operation cancelled.");
+            return;
+        }
+
+        if (newStatus == null) {
+            System.out.println("Invalid status option.");
+            return;
+        }
+
+        if (currentStatus.equalsIgnoreCase(newStatus)) {
+            System.out.println("Appointment already has that status.");
+            return;
+        }
+
+        System.out.print("Confirm status update? (Y/N): ");
+        String confirmation = sc.nextLine().trim();
+
+        if (!confirmation.equalsIgnoreCase("Y")) {
+            System.out.println("Operation cancelled.");
+            return;
+        }
+
+        String updateSQL = """
+                UPDATE appointments
+                SET status = ?
+                WHERE id = ?
+                """;
+
+        try (Connection conn = DatabaseConnection.getConnection();
+             PreparedStatement pstmt = conn.prepareStatement(updateSQL)) {
+
+            pstmt.setString(1, newStatus);
+            pstmt.setInt(2, appointmentId);
+
+            int updated = pstmt.executeUpdate();
+
+            if (updated > 0) {
+                System.out.println("Appointment status updated successfully.");
+
+                activityLogDao.logAction(
+                        admin.id(),
+                        "APPOINTMENT_STATUS_UPDATED",
+                        "Appointment ID " + appointmentId
+                                + " changed from " + currentStatus
+                                + " to " + newStatus
+                );
+            } else {
+                System.out.println("Appointment status was not updated.");
+            }
+
+        } catch (SQLException e) {
+            System.out.println("Error updating appointment: " + e.getMessage());
+        }
+    }
+
+
+    // ==========================================
+    // DECIMAL INPUT VALIDATION
+    // ==========================================
+
+    private double readDoubleInput(String prompt) {
+        while (true) {
+            System.out.print(prompt);
+            String input = sc.nextLine().trim();
+
+            try {
+                double value = Double.parseDouble(input);
+
+                if (!Double.isFinite(value)) {
+                    System.out.println("Please enter a valid finite number.");
+                    continue;
+                }
+
+                return value;
+
+            } catch (NumberFormatException e) {
+                System.out.println("Please enter a valid amount.");
+            }
+        }
+    }
+
 
     // ==========================================
     // GENERAL INPUT
