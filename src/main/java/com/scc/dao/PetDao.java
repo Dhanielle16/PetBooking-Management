@@ -1,3 +1,4 @@
+
 package com.scc.dao;
 
 import java.sql.Connection;
@@ -5,10 +6,22 @@ import java.sql.PreparedStatement;
 import java.sql.SQLException;
 
 public class PetDao {
+
     private final ActivityLogDao logDao = new ActivityLogDao();
 
-    public boolean registerPet(int ownerId, String petName, String species, String breed, int age) {
-        String sql = "INSERT INTO pets (owner_id, pet_name, species, breed, age) VALUES (?, ?, ?, ?, ?)";
+    // REGISTER NEW PET
+    public boolean registerPet(
+            int ownerId,
+            String petName,
+            String species,
+            String breed,
+            int age
+    ) {
+
+        String sql = "INSERT INTO pets "
+                + "(owner_id, pet_name, species, breed, age_years, "
+                + "medical_notes, status) "
+                + "VALUES (?, ?, ?, ?, ?, NULL, 'ACTIVE')";
 
         try (Connection conn = DatabaseConnection.getConnection();
              PreparedStatement pstmt = conn.prepareStatement(sql)) {
@@ -20,19 +33,29 @@ public class PetDao {
             pstmt.setInt(5, age);
 
             int rowsInserted = pstmt.executeUpdate();
+
             if (rowsInserted > 0) {
-                // --- DOMAIN-SPECIFIC AUDIT LOG ---
+
                 logDao.logAction(
                         ownerId,
                         "PET_REGISTERED",
-                        "User ID " + ownerId + " registered pet '" + petName + "' (" + species + " - " + breed + ")."
+                        "User ID " + ownerId
+                                + " registered pet '" + petName
+                                + "' (" + species + " - " + breed + ")."
                 );
-                System.out.println("-> Pet registered successfully and audit log recorded.");
+
+                System.out.println(
+                        "-> Pet registered successfully and audit log recorded.");
+
                 return true;
             }
+
         } catch (SQLException e) {
-            System.err.println("Error registering pet: " + e.getMessage());
+
+            System.err.println(
+                    "Error registering pet: " + e.getMessage());
         }
+
         return false;
     }
 }
